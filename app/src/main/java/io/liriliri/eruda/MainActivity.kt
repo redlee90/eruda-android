@@ -38,6 +38,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favicon: ImageView
     private lateinit var manager: InputMethodManager
     private val TAG = "Eruda.MainActivity"
+    private val ERUDA_URL = "//cdn.jsdelivr.net/npm/eruda"
+    private var shouldLoadErudaJsLocally = false
     var mFilePathCallback: ValueCallback<Array<Uri>>? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -137,6 +139,19 @@ class MainActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? {
+                if (request.url.toString().endsWith(ERUDA_URL)) {
+                    Log.i(TAG, "Load eruda.js locally? " + shouldLoadErudaJsLocally)
+                    if (shouldLoadErudaJsLocally) {
+                        shouldLoadErudaJsLocally = false
+
+                        return WebResourceResponse(
+                            "application/javascript",
+                            "utf-8",
+                            assets.open("eruda.js")
+                        )
+                    }
+                }
+
                 if (request.isForMainFrame) {
                     val url = request.url.toString()
                     if (!isHttpUrl(url)) {
@@ -213,13 +228,18 @@ class MainActivity : AppCompatActivity() {
                             window.define = null;
                         }
                         var script = document.createElement('script'); 
-                        script.src = '//cdn.jsdelivr.net/npm/eruda'; 
+                        script.src = '$ERUDA_URL'; 
                         document.body.appendChild(script); 
-                        script.onload = function () { 
+                        script.onload = function () {
+                            console.log('eruda.js loaded')
                             eruda.init();
                             if (define) {
                                 window.define = define;
                             }
+                        }
+                        script.onerror = function () {
+                            console.log('eruda.js not loaded')
+                            erudaCallback.onWebLoadFailed()
                         }
                     })();
                 """
@@ -293,6 +313,16 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+
+        webView.addJavascriptInterface(object : Any() {
+            @JavascriptInterface
+            fun onWebLoadFailed() {
+                shouldLoadErudaJsLocally = true;
+                webView.post {
+                    webView.reload()
+                }
+            }
+        }, "erudaCallback")
 
         webView.loadUrl("https://github.com/liriliri/eruda")
     }
